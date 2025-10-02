@@ -137,4 +137,4 @@ Logger::~Logger() {
     }
 }
 
-} // namespace tslog
+} 

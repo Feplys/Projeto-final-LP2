@@ -37,10 +37,10 @@ private:
     std::string get_thread_id() const;
     
 public:
-    // Padrão Singleton
+    
     static Logger& getInstance();
     
-    // Configuração
+  
     void configure(const std::string& filename = "", 
                    LogLevel min_level = LogLevel::INFO,
                    bool console = true, 
@@ -54,10 +54,9 @@ public:
     void error(const std::string& message);
     void critical(const std::string& message);
     
-    // Flush manual
+    
     void flush();
     
-    // Destrutor
     ~Logger();
     
     // Desabilitar cópia e atribuição
@@ -72,6 +71,6 @@ public:
 #define LOG_ERROR(msg) tslog::Logger::getInstance().error(msg)
 #define LOG_CRITICAL(msg) tslog::Logger::getInstance().critical(msg)
 
-} // namespace tslog
+} 
 
-#endif // LIBTSLOG_H
+#endif 

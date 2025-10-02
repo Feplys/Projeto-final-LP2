@@ -6,29 +6,39 @@
 
 namespace chat {
 
-// Exceção base para todo o sistema de chat
+
 class ChatException : public std::runtime_error {
 public:
-    explicit ChatException(const std::string& message) : std::runtime_error(message) {}
+    ChatException(const std::string& message) : std::runtime_error(message) {}
+    virtual ~ChatException() = default;
+    
+   
+    virtual std::string get_suggestion() const {
+        return "Verifique a documentação ou contate o suporte";
+    }
 };
 
-// Exceções relacionadas ao Logger
 class LoggerException : public ChatException {
 public:
-    explicit LoggerException(const std::string& message) : ChatException(message) {}
+    LoggerException(const std::string& message) : ChatException(message) {}
+    
+    std::string get_suggestion() const override {
+        return "Verifique permissões do diretório de logs e espaço em disco.";
+    }
 };
 
-// Exceções de rede (para etapas futuras)
+
 class NetworkException : public ChatException {
 public:
-    explicit NetworkException(const std::string& message) : ChatException(message) {}
+    NetworkException(const std::string& message) : ChatException(message) {}
+    
+    std::string get_suggestion() const override {
+        return "Verifique a conexão, o endereço do servidor e configurações de firewall.";
+    }
 };
 
-class SocketException : public NetworkException {
-public:
-    explicit SocketException(const std::string& message) : NetworkException(message) {}
-};
+} 
 
-} // namespace chat
+#endif 
 
-#endif // CHAT_EXCEPTIONS_H
+

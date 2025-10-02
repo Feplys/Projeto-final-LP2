@@ -16,26 +16,32 @@ private:
     bool shutdown_ = false;
 
 public:
-    ThreadSafeQueue() = default;
-    ~ThreadSafeQueue() = default;
+    void push(T item) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (shutdown_) return;
+        queue_.push(std::move(item));
+        cv_.notify_one();
+    }
+
+    std::optional<T> pop_timeout(std::chrono::milliseconds timeout) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (cv_.wait_for(lock, timeout, [this]{ return !queue_.empty() || shutdown_; })) {
+            if (!queue_.empty()) {
+                T item = std::move(queue_.front());
+                queue_.pop();
+                return item;
+            }
+        }
+        return std::nullopt; 
+    }
     
-    void push(T item);
-    
-    bool pop(T& item);
-    
-    std::optional<T> pop_timeout(std::chrono::milliseconds timeout);
-    
-    bool empty() const;
-    
-    size_t size() const;
-    
-    void shutdown();
-    
-    // Não copiável
-    ThreadSafeQueue(const ThreadSafeQueue&) = delete;
-    ThreadSafeQueue& operator=(const ThreadSafeQueue&) = delete;
+    void shutdown() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        shutdown_ = true;
+        cv_.notify_all();
+    }
 };
 
-#include "thread_safe_queue.tpp" // Implementação do template
+#endif 
 
-#endif // THREAD_SAFE_QUEUE_H
+
