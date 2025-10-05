@@ -1,4 +1,4 @@
-# Makefile para Projeto Chat Concorrente - ETAPA 3
+# Makefile para Projeto Chat Concorrente - Completo
 # Compilador e flags
 CXX = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -g -O2
