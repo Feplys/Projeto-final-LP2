@@ -57,8 +57,7 @@ public:
     void print_stats() const;
 };
 
-} // namespace chat
+} 
 
-#endif // SIMPLE_CHAT_SERVER_H
-
+#endif 
 

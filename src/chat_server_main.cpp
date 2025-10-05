@@ -5,10 +5,12 @@
 #include <signal.h>
 #include <thread>
 #include <chrono>
+#include <cstring>
 
 using namespace chat;
 
 std::unique_ptr<SimpleChatServer> server = nullptr;
+bool daemon_mode = false;
 
 void signal_handler(int signum) {
     std::cout << "\n\n🛑 Sinal recebido (" << signum << "). Parando servidor...\n" << std::endl;
@@ -41,6 +43,8 @@ void interactive_mode(SimpleChatServer& server_instance) {
     std::string command;
     while (server_instance.is_running()) {
         std::cout << "servidor> ";
+        std::cout.flush();
+        
         if (!std::getline(std::cin, command)) {
             break; 
         }
@@ -50,7 +54,7 @@ void interactive_mode(SimpleChatServer& server_instance) {
         } else if (command == "stats") {
             server_instance.print_stats();
         } else if (command == "clients") {
-            auto usernames = server_instance.get_online_usernames(); // <<< CORRIGIDO AQUI
+            auto usernames = server_instance.get_online_usernames();
             std::cout << "\n👥 CLIENTES ONLINE (" << usernames.size() << "):\n";
             if (usernames.empty()) {
                 std::cout << "  Nenhum cliente online.\n";
@@ -71,6 +75,14 @@ void interactive_mode(SimpleChatServer& server_instance) {
     }
 }
 
+void daemon_mode_run(SimpleChatServer& server_instance) {
+    // Em modo daemon, apenas aguarda sinais ou 60 segundos
+    LOG_INFO("Servidor em modo daemon");
+    for (int i = 0; i < 600 && server_instance.is_running(); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
 int main(int argc, char* argv[]) {
     try {
         tslog::Logger::getInstance().configure("chat_server.log", tslog::LogLevel::INFO, true, true);
@@ -83,19 +95,39 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
 
     int port = DEFAULT_PORT;
-    // ... (processamento de argumentos pode ser adicionado aqui) ...
+    
+    // Parse argumentos
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--daemon") == 0) {
+            daemon_mode = true;
+        } else if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            port = std::atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            port = std::atoi(argv[++i]);
+        }
+    }
 
-    print_banner();
+    if (!daemon_mode) {
+        print_banner();
+    }
     
     try {
         server = std::make_unique<SimpleChatServer>(port);
         std::cout << "🚀 Iniciando servidor na porta " << port << "...\n";
+        
         if (!server->start()) {
             std::cerr << "❌ Falha fatal ao iniciar servidor." << std::endl;
             return 1;
         }
+        
         std::cout << "✅ Servidor online. Clientes podem conectar.\n";
-        interactive_mode(*server);
+        
+        if (daemon_mode) {
+            daemon_mode_run(*server);
+        } else {
+            interactive_mode(*server);
+        }
+        
     } catch (const std::exception& e) {
         LOG_CRITICAL("Exceção fatal no servidor: " + std::string(e.what()));
         return 1;
@@ -104,5 +136,3 @@ int main(int argc, char* argv[]) {
     std::cout << "👋 Servidor finalizado.\n";
     return 0;
 }
-
-

@@ -52,6 +52,6 @@ std::string ConnectedClient::receive_data_blocking(std::string& read_buffer) {
     return Utils::read_line(socket_fd_, read_buffer);
 }
 
-} // namespace chat
+} 
 
 

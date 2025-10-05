@@ -8,11 +8,10 @@
 void worker_thread(int thread_id, int num_messages) {
     std::random_device rd;
     std::mt19937 gen(rd());
-    std::uniform_int_distribution<> delay_dist(10, 200); // 10-200ms
-    std::uniform_int_distribution<> level_dist(0, 4);    // 0-4 para LogLevel
+    std::uniform_int_distribution<> delay_dist(10, 200); 
+    std::uniform_int_distribution<> level_dist(0, 4);    
     
     for (int i = 0; i < num_messages; ++i) {
-        // Simula algum trabalho
         std::this_thread::sleep_for(std::chrono::milliseconds(delay_dist(gen)));
         
         int level_idx = level_dist(gen);

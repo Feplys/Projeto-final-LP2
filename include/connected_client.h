@@ -32,8 +32,8 @@ public:
     std::string receive_data_blocking(std::string& read_buffer); 
 };
 
-} // namespace chat
+} 
 
-#endif // CONNECTED_CLIENT_H
+#endif 
 
 

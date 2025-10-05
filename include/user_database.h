@@ -26,8 +26,8 @@ public:
     size_t get_user_count() const;
 };
 
-} // namespace chat
+} 
 
-#endif // USER_DATABASE_H
+#endif 
 
 

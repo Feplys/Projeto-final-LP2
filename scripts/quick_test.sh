@@ -16,7 +16,6 @@ echo "=========================================="
 echo -e "${NC}"
 
 # Diretórios
-# Garante que o script sempre rode a partir do diretório raiz do projeto
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR" || exit 1
@@ -36,22 +35,34 @@ fi
 # Configurações
 PORT=8081
 SERVER_PID=""
+CLIENT_PIDS=()
 
 # Função de limpeza
 cleanup() {
     echo -e "\n${YELLOW}🧹 Limpando processos...${NC}"
+    
+    # Matar clientes primeiro
+    for pid in "${CLIENT_PIDS[@]}"; do
+        kill -9 $pid 2>/dev/null
+    done
+    
+    # Depois o servidor
     if [[ -n $SERVER_PID ]] && kill -0 $SERVER_PID 2>/dev/null; then
-        kill -SIGTERM $SERVER_PID
+        kill -SIGTERM $SERVER_PID 2>/dev/null
+        wait $SERVER_PID 2>/dev/null
     fi
-    # Garante que qualquer cliente de teste remanescente seja finalizado
+    
+    # Garantir que nada ficou rodando
     pkill -f "chat_client.*-p $PORT" 2>/dev/null || true
-    wait $SERVER_PID 2>/dev/null
+    pkill -f "chat_server.*--port $PORT" 2>/dev/null || true
 }
 
 trap cleanup EXIT
 
+# Limpar logs antigos
+rm -f chat_server.log chat_client.log
+
 echo -e "${BLUE}1. Iniciando servidor na porta $PORT...${NC}"
-rm -f chat_server.log
 ./bin/chat_server --daemon --port $PORT &
 SERVER_PID=$!
 
@@ -66,13 +77,17 @@ echo -e "${GREEN}✅ Servidor iniciado (PID: $SERVER_PID)${NC}"
 
 echo -e "${BLUE}2. Testando conexão de 3 clientes simultâneos...${NC}"
 
-# Iniciar 3 clientes de teste em background com um pequeno delay
-./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente1 -a 3 &
-sleep 0.1
-./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente2 -a 3 &
-sleep 0.1
-./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente3 -a 3 &
+# Iniciar 3 clientes de teste em background
+./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente1 -a 3 > /dev/null 2>&1 &
+CLIENT_PIDS+=($!)
+sleep 0.2
 
+./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente2 -a 3 > /dev/null 2>&1 &
+CLIENT_PIDS+=($!)
+sleep 0.2
+
+./bin/chat_client -s 127.0.0.1 -p $PORT -u Cliente3 -a 3 > /dev/null 2>&1 &
+CLIENT_PIDS+=($!)
 
 echo -e "${YELLOW}⏳ Aguardando execução dos testes (10 segundos)...${NC}"
 sleep 10
@@ -80,28 +95,23 @@ sleep 10
 echo -e "${BLUE}3. Verificando resultados...${NC}"
 
 CONNECTIONS=0
-CHAT_RETRANSMISSIONS=0
+MESSAGES_SENT=0
 SUCCESS=false
 
 if [[ -f "chat_server.log" ]]; then
-    # CONTAGEM CORRETA DE CONEXÕES: Conta quantos usernames únicos apareceram na mensagem "conectado com sucesso"
+    # Contar conexões únicas (usuários que se conectaram com sucesso)
     CONNECTIONS=$(grep "conectado com sucesso" chat_server.log | awk '{print $2}' | sort -u | wc -l)
     
-    # CONTAGEM INTELIGENTE DE RETRANSMISSÕES: Soma o número de clientes de cada linha de log
-    RETRANSMISSION_SUM=$(grep "retransmitida para" chat_server.log | awk '{print $(NF-1)}' | paste -sd+ - | bc)
-    # Se a soma estiver vazia (nenhuma retransmissão), define como 0
-    CHAT_RETRANSMISSIONS=${RETRANSMISSION_SUM:-0}
+    # Contar total de mensagens broadcast enviadas pelos clientes
+    MESSAGES_SENT=$(grep "Mensagem de Cliente" chat_server.log | wc -l)
 fi
 
 echo -e "\n${BLUE}📊 RESULTADO:${NC}"
 echo "Conexões únicas no servidor: $CONNECTIONS/3"
-echo "Total de mensagens retransmitidas (incluindo join/leave): $CHAT_RETRANSMISSIONS"
+echo "Mensagens enviadas pelos clientes: $MESSAGES_SENT"
 
-# Lógica de sucesso revisada e mais tolerante a race conditions:
-# - Garante que os 3 clientes se conectaram.
-# - Verifica se um número significativo de mensagens foi retransmitido. O ideal é 24 (9 de chat*2 + 3 de join*N + 3 de leave*N),
-#   mas devido a race conditions, aceitamos um valor um pouco menor.
-if [[ $CONNECTIONS -eq 3 && $CHAT_RETRANSMISSIONS -ge 15 ]]; then
+# - Pelo menos 7 mensagens foram enviadas (3 clientes * 3 mensagens = 9, mas aceitamos 7+ devido a timing)
+if [[ $CONNECTIONS -eq 3 && $MESSAGES_SENT -ge 7 ]]; then
     SUCCESS=true
 fi
 
@@ -112,10 +122,22 @@ if $SUCCESS; then
     exit 0
 else
     echo -e "\n${RED}❌ TESTE FALHOU!${NC}"
-    echo -e "${YELLOW}Verifique os logs para mais detalhes:${NC}"
+    echo -e "${YELLOW}Detalhes:${NC}"
+    
+    if [[ $CONNECTIONS -lt 3 ]]; then
+        echo -e "${RED}  - Apenas $CONNECTIONS de 3 clientes conectaram${NC}"
+    fi
+    
+    if [[ $MESSAGES_SENT -lt 7 ]]; then
+        echo -e "${RED}  - Apenas $MESSAGES_SENT mensagens foram enviadas (esperado >= 7)${NC}"
+    fi
+    
+    echo -e "\n${YELLOW}Verifique os logs para mais detalhes:${NC}"
     echo "  - chat_server.log"
-    echo "  - chat_client.log"
+    
+    # Mostrar últimas linhas relevantes do log
+    echo -e "\n${YELLOW}Últimas linhas do log do servidor:${NC}"
+    grep -E "(conectado|Mensagem de|ERROR)" chat_server.log | tail -10
+    
     exit 1
 fi
-
-

@@ -53,8 +53,8 @@ public:
     static std::string read_line(int socket_fd, std::string& buffer);
 };
 
-} // namespace chat
+} 
 
-#endif // CHAT_COMMON_H
+#endif 
 
 

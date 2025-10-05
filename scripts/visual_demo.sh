@@ -14,6 +14,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${CYAN}"
@@ -45,40 +46,24 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Esta função será executada dentro de cada terminal de cliente.
-# Ela gera mensagens aleatórias e as envia para o stdin do programa cliente.
-run_chatter_client() {
-    local PORT=$1
-    local USERNAME=$2
-
-    MESSAGES=("oi" "ola" "hello" "hi" "hola" "tudo bem?" "e aí?" "como vai?")
-    
-    (
-      # O subshell ( ... ) permite que a saída seja canalizada via pipe |
-      while true; do
-        MSG=${MESSAGES[$RANDOM % ${#MESSAGES[@]}]}
-        echo "$MSG"
-        
-        # Dorme por um tempo aleatório entre 2 e 5 segundos
-        SLEEP_TIME=$(awk 'BEGIN{srand(); print 2+rand()*3}')
-        sleep $SLEEP_TIME
-      done
-    ) | ./bin/chat_client --port "$PORT" --username "$USERNAME"
-}
-
-# Exporta a função para que ela fique disponível para os novos terminais
-export -f run_chatter_client
-
 echo -e "${BLUE}2. Iniciando o servidor em uma nova janela...${NC}"
 $TERMINAL_CMD bash -c "./bin/chat_server --port $SERVER_PORT; read -p 'Pressione Enter para fechar...'" &
 PIDS+=($!)
-sleep 2
+sleep 3
 
 echo -e "${BLUE}3. Iniciando ${NUM_CLIENTS} clientes em modo 'chatter'...${NC}"
 for (( i=1; i<=NUM_CLIENTS; i++ )); do
     USERNAME="Bot$i"
-    # Chama a função exportada dentro do novo terminal
-    $TERMINAL_CMD bash -c "run_chatter_client $SERVER_PORT $USERNAME; read -p 'Pressione Enter para fechar...'" &
+    
+    # Inicia cliente em modo automático, envia 50 mensagens
+    $TERMINAL_CMD bash -c "
+        echo '🤖 Bot$i iniciando...';
+        sleep 1;
+        ./bin/chat_client --server 127.0.0.1 --port $SERVER_PORT --username $USERNAME --auto 50;
+        echo '';
+        echo '✅ Bot$i finalizou. Pressione Enter para fechar...';
+        read
+    " &
     PIDS+=($!)
     sleep 0.5
 done
@@ -88,5 +73,3 @@ echo -e "${YELLOW}Observe as janelas dos 'Bots' conversando entre si.${NC}"
 echo -e "\n${CYAN}Quando terminar de observar, feche esta janela principal ou pressione Ctrl+C para encerrar todos os processos.${NC}"
 
 wait
-
-

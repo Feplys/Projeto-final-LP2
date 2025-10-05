@@ -29,7 +29,7 @@ void UserDatabase::load() {
 }
 
 void UserDatabase::save() {
-    std::lock_guard<std::mutex> lock(db_mutex_);
+    
     std::ofstream file(db_filepath_, std::ios::trunc);
     if (!file.is_open()) {
         LOG_ERROR("Não foi possível salvar o banco de dados em '" + db_filepath_ + "'");
@@ -39,6 +39,7 @@ void UserDatabase::save() {
     for (const auto& pair : users_) {
         file << pair.first << ":" << pair.second << "\n";
     }
+    file.flush();
 }
 
 bool UserDatabase::add_user(const std::string& username, const std::string& password) {
@@ -46,23 +47,24 @@ bool UserDatabase::add_user(const std::string& username, const std::string& pass
     if (users_.count(username)) {
         return false; // Usuário já existe
     }
-    users_[username] = password; // Nota: Senha em texto plano para simplicidade
-    save();
+    users_[username] = password;
+    save(); // save() agora é chamado com o lock já adquirido
     LOG_INFO("Novo usuário '" + username + "' registrado.");
     return true;
 }
 
 bool UserDatabase::validate_user(const std::string& username, const std::string& password) const {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    if (users_.count(username)) {
-        return users_.at(username) == password;
+    auto it = users_.find(username);
+    if (it != users_.end()) {
+        return it->second == password;
     }
     return false;
 }
 
 bool UserDatabase::user_exists(const std::string& username) const {
     std::lock_guard<std::mutex> lock(db_mutex_);
-    return users_.count(username);
+    return users_.count(username) > 0;
 }
 
 size_t UserDatabase::get_user_count() const {
@@ -70,6 +72,4 @@ size_t UserDatabase::get_user_count() const {
     return users_.size();
 }
 
-} // namespace chat
-
-
+} 

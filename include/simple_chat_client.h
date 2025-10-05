@@ -44,8 +44,8 @@ public:
     const std::string& get_username() const { return username_; }
 };
 
-} // namespace chat
+} 
 
-#endif // SIMPLE_CHAT_CLIENT_H
+#endif 
 
 
