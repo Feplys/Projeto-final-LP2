@@ -1,80 +1,68 @@
 #include "chat_common.h"
-#include <chrono>
-#include <iomanip>
-#include <cstring>
-#include <sstream>
-#include <stdexcept>
-#include <arpa/inet.h>
+#include "libtslog.h"
 #include <sys/socket.h>
+#include <unistd.h>
 
 namespace chat {
 
-// Implementação da struct Message
-Message::Message() : type(MessageType::CHAT) {
-    memset(username, 0, MAX_USERNAME_SIZE);
-    memset(content, 0, MAX_MESSAGE_SIZE);
+// Construtores
+Message::Message() {
+    memset(username, 0, sizeof(username));
+    memset(password, 0, sizeof(password));
+    memset(target_user, 0, sizeof(target_user));
+    memset(content, 0, sizeof(content));
 }
 
-Message::Message(MessageType t, const std::string& user, const std::string& msg)
-    : type(t) {
-    memset(username, 0, MAX_USERNAME_SIZE);
-    memset(content, 0, MAX_MESSAGE_SIZE);
+Message::Message(MessageType msg_type, const std::string& user, const std::string& msg_content) : Message() {
+    type = msg_type;
     strncpy(username, user.c_str(), MAX_USERNAME_SIZE - 1);
-    strncpy(content, msg.c_str(), MAX_MESSAGE_SIZE - 1);
+    strncpy(content, msg_content.c_str(), MAX_CONTENT_SIZE - 1);
 }
 
+// Funções de Serialização
 std::string Message::serialize() const {
+    const char DELIMITER = '|';
     std::stringstream ss;
-    ss << static_cast<int>(type) << "|" << username << "|" << content;
+    ss << static_cast<int>(type) << DELIMITER << username << DELIMITER
+       << password << DELIMITER << target_user << DELIMITER << content;
     return ss.str();
 }
 
 Message Message::deserialize(const std::string& data) {
     Message msg;
     std::stringstream ss(data);
-    std::string item;
-    
+    std::string temp;
+    const char DELIMITER = '|';
     try {
-        if (std::getline(ss, item, '|')) {
-            msg.type = static_cast<MessageType>(std::stoi(item));
-        }
-        if (std::getline(ss, item, '|')) {
-            strncpy(msg.username, item.c_str(), MAX_USERNAME_SIZE - 1);
-        }
-        // O resto da linha é o conteúdo
-        std::getline(ss, item);
-        strncpy(msg.content, item.c_str(), MAX_MESSAGE_SIZE - 1);
-
-    } catch (const std::exception&) {
+        if (std::getline(ss, temp, DELIMITER)) msg.type = static_cast<MessageType>(std::stoi(temp));
+        if (std::getline(ss, temp, DELIMITER)) strncpy(msg.username, temp.c_str(), MAX_USERNAME_SIZE - 1);
+        if (std::getline(ss, temp, DELIMITER)) strncpy(msg.password, temp.c_str(), MAX_PASSWORD_SIZE - 1);
+        if (std::getline(ss, temp, DELIMITER)) strncpy(msg.target_user, temp.c_str(), MAX_USERNAME_SIZE - 1);
+        if (std::getline(ss, temp)) strncpy(msg.content, temp.c_str(), MAX_CONTENT_SIZE - 1);
+    } catch (...) {
         msg.type = MessageType::ERROR_MSG;
-        strcpy(msg.content, "Mensagem corrompida recebida.");
     }
     return msg;
 }
 
-bool Message::is_valid() const {
-    return (type >= MessageType::CONNECT && type <= MessageType::ERROR_MSG);
+// --- CLASSE DE UTILITÁRIOS ---
+
+std::string Utils::read_line(int socket_fd, std::string& buffer) {
+    char read_char;
+    while (true) {
+        size_t pos = buffer.find('\n');
+        if (pos != std::string::npos) {
+            std::string line = buffer.substr(0, pos);
+            buffer.erase(0, pos + 1);
+            return line;
+        }
+        ssize_t bytes_read = recv(socket_fd, &read_char, 1, 0);
+        if (bytes_read <= 0) return "";
+        buffer += read_char;
+    }
 }
 
-std::string Message::to_string() const {
-    std::stringstream ss;
-    ss << "Message{type=" << static_cast<int>(type)
-       << ", user='" << username << "'"
-       << ", content='" << content << "'}";
-    return ss.str();
-}
-
-// Implementação de NetworkUtils
-bool NetworkUtils::is_valid_port(int port) {
-    return port > 1024 && port <= 65535;
-}
-
-bool NetworkUtils::is_valid_ip(const std::string& ip) {
-    struct sockaddr_in sa;
-    return inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr)) != 0;
-}
-
-std::string NetworkUtils::get_timestamp_str() {
+std::string Utils::get_timestamp_str() {
     auto now = std::chrono::system_clock::now();
     auto time_t = std::chrono::system_clock::to_time_t(now);
     std::stringstream ss;
@@ -82,29 +70,31 @@ std::string NetworkUtils::get_timestamp_str() {
     return ss.str();
 }
 
-std::string NetworkUtils::format_message_for_display(const Message& msg) {
-    std::stringstream ss;
-    switch (msg.type) {
-        case MessageType::CONNECT:
-            ss << "*** " << msg.username << " entrou no chat ***";
-            break;
-        case MessageType::DISCONNECT:
-            ss << "*** " << msg.username << " saiu do chat ***";
-            break;
-        case MessageType::CHAT:
-            ss << "[" << get_timestamp_str() << "] "
-               << msg.username << ": " << msg.content;
-            break;
-        case MessageType::SERVER_MSG:
-            ss << ">>> SERVIDOR: " << msg.content;
-            break;
-        case MessageType::ERROR_MSG:
-            ss << "!!! ERRO: " << msg.content;
-            break;
-    }
-    return ss.str();
+bool Utils::is_valid_username(const std::string& name) {
+    if (name.length() < 3 || name.length() >= MAX_USERNAME_SIZE) return false;
+    return std::all_of(name.begin(), name.end(), [](char c){ return std::isalnum(c); });
 }
 
-} 
+bool Utils::is_valid_password(const std::string& pass) {
+    return pass.length() >= 4 && pass.length() < MAX_PASSWORD_SIZE;
+}
+
+std::string Utils::filter_profanity(const std::string& message) {
+    std::string lower_message = message;
+    std::transform(lower_message.begin(), lower_message.end(), lower_message.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    const std::vector<std::string> bad_words = {"palavraofeia", "chulao", "improprio"};
+    std::string result = message;
+    for (const auto& word : bad_words) {
+        size_t pos = lower_message.find(word);
+        while (pos != std::string::npos) {
+            result.replace(pos, word.length(), std::string(word.length(), '*'));
+            pos = lower_message.find(word, pos + 1);
+        }
+    }
+    return result;
+}
+
+} // namespace chat
 
 
